@@ -1,0 +1,328 @@
+#include <Servo.h> //Added Servo 3-21-19
+
+/*  MonsterMoto Shield Example Sketch
+  date: 5/24/11
+  code by: Jim Lindblom
+  hardware by: Nate Bernstein
+  SparkFun Electronics
+  This is really simple example code to get you some basic
+  functionality with the MonsterMoto Shield. The MonsterMote uses
+  two VNH2SP30 high-current full-bridge motor drivers.
+
+  Use the motorGo(uint8_t motor, uint8_t direct, uint8_t pwm)
+  function to get motors going in either CW, CCW, BRAKEVCC, or
+  BRAKEGND. Use motorOff(int motor) to turn a specific motor off.
+
+  The motor variable in each function should be either a 0 or a 1.
+  pwm in the motorGo function should be a value between 0 and 255.
+
+*/
+#define BRAKEVCC 0
+#define CW   1
+#define CCW  2
+#define BRAKEGND 3
+#define CS_THRESHOLD 100
+
+/*  VNH2SP30 pin definitions
+  xxx[0] controls '1' outputs
+  xxx[1] controls '2' outputs */
+int inApin[2] = {7, 4};  // INA: Clockwise input
+int inBpin[2] = {8, 9}; // INB: Counter-clockwise input //(This is on pin 9 see trigPin notes 3/20)
+int pwmpin[2] = {5, 6}; // PWM input
+int cspin[2] = {2, 3}; // CS: Current sense ANALOG input
+int enpin[2] = {0, 1}; // EN: Status of switches output (Analog pin)
+int avgDist = 0;
+int avgDistR = 0;
+int avgDistL = 0;
+int statpin = 13;
+int val1;
+int val2;
+int val3;
+int val4;
+int val5;
+int val6;
+const int trigPin = 13;//Changed from 09 (Ferguson 3/20)
+const int echoPin = 10;
+Servo servo1; //Added Servo 3-21-19
+
+
+void setup()
+{
+  Serial.begin(9600);
+  servo1.attach(12); //Added Servo 3-21-19
+  pinMode(statpin, OUTPUT);
+
+  // Initialize digital pins as outputs
+  for (int i = 0; i < 2; i++)
+  {
+    pinMode(inApin[i], OUTPUT);
+    pinMode(inBpin[i], OUTPUT);
+    pinMode(pwmpin[i], OUTPUT);
+  }
+  // Initialize braked
+  for (int i = 0; i < 2; i++)
+  {
+    digitalWrite(inApin[i], LOW);
+    digitalWrite(inBpin[i], LOW);
+    servo1.write(90);
+    delay(100);
+
+  }
+
+}
+
+
+void loop()
+{
+ 
+  servo1.write(90); //servo look Forward
+  delay(500);  //delay added so the servo has time to reset before get distance
+  
+  {avDist();//check distance
+  if (avgDist>60)
+  
+    motorGo(0, CCW, 70);//This is going forward no obstacles
+    motorGo(1, CCW, 70);
+    delay(100);
+  }
+  if (avgDist < 60)
+  { 
+    motorGo(0, CCW, 0);//stop 
+    motorGo(1, CCW, 0);
+    delay(2000);
+    avDistR();//Look right and get avg
+    avDistL();//Look left and get avg
+
+    if(avgDistR>=avgDistL)//if average distance to the right is greater than dist left
+  {
+    turnRight();//turn right
+    motorGo(0, CCW, 0);//stop 
+    motorGo(1, CCW, 0);//stop 
+    delay(2000); //wait for 2 seconds
+  }
+    if(avgDistL>=avgDistR)
+  {
+    turnLeft();
+    motorGo(0, CCW, 0);//stop 
+    motorGo(1, CCW, 0);//stop 
+    delay(2000); //wait for 2 seconds
+  }
+ }else
+ {
+    motorGo(0, CCW, 70);//This is going forward no obstacles
+    motorGo(1, CCW, 70);
+    delay(100);
+ }
+}
+ /* if ((analogRead(cspin[0]) < CS_THRESHOLD) && (analogRead(cspin[1]) < CS_THRESHOLD))
+    digitalWrite(statpin, HIGH);*/
+  
+/*void motorOff(int motor)//do we need this section? (Ferguson 3/20)
+  {
+  // Initialize braked
+  for (int i = 0; i < 2; i++)
+  {
+    digitalWrite(inApin[i], LOW);
+    digitalWrite(inBpin[i], LOW);
+  }
+  analogWrite(pwmpin[motor], 0);//do we need this section? (Ferguson 3/20)
+  }
+
+  /* motorGo() will set a motor going in a specific direction
+  the motor will continue going in that direction, at that speed
+  until told to do otherwise.
+
+  motor: this should be either 0 or 1, will selet which of the two
+  motors to be controlled
+
+  direct: Should be between 0 and 3, with the following result
+  0: Brake to VCC
+  1: Clockwise
+  2: CounterClockwise
+  3: Brake to GND
+
+  pwm: should be a value between ? and 1023, higher the number, the faster
+  it'll go
+*/
+void motorGo(uint8_t motor, uint8_t direct, uint8_t pwm)
+{
+  if (motor <= 1)
+  {
+    if (direct <= 4)
+    {
+      // Set inA[motor]
+      if (direct <= 1)
+        digitalWrite(inApin[motor], HIGH);
+      else
+        digitalWrite(inApin[motor], LOW);
+
+      // Set inB[motor]
+      if ((direct == 0) || (direct == 2))
+        digitalWrite(inBpin[motor], HIGH);
+      else
+        digitalWrite(inBpin[motor], LOW);
+
+      analogWrite(pwmpin[motor], pwm);
+    }
+  }
+}
+
+//RETURNS THE DISTANCE MEASURED BY THE HC-SR04 DISTANCE SENSOR
+float getDistance()
+{
+  float echoTime;                   //variable to store the time it takes for a ping to bounce off an object
+  float calculatedDistance;         //variable to store the distance calculated from the echo time
+
+  //send out an ultrasonic pulse that's 10ms long
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  echoTime = pulseIn(echoPin, HIGH);      //use the pulsein command to see how long it takes for the
+  //pulse to bounce back to the sensor
+
+  calculatedDistance = echoTime / 148.0;  //calculate the distance of the object that reflected the pulse (half the bounce time multiplied by the speed of sound)
+
+  return calculatedDistance;              //send back the distance that was calculated
+}
+
+
+/*float servomoveright()
+  {
+
+    //create a local variable to store the servo's position. //Added Servo 3-21-19
+  int position;
+
+  // To control a servo, you give it the angle you'd like it
+  // to turn to. Servos cannot turn a full 360 degrees, but you
+  // can tell it to move anywhere between 0 and 180 degrees.
+
+  // Tell servo to go to 180 degrees, stepping by two degrees
+  for(position = 0; position < 40; position += 1)
+  {
+  // Move to next position
+  servo1.write(position);
+     // Short pause to allow it to move
+    delay(40);
+
+  }
+*/
+/*
+  // Tell servo to go to 0 degrees, stepping by one degree
+  for(position = 70; position >= 0; position -= 1)
+  {
+    // Move to next position
+  servo1.write(position);
+    // Short pause to allow it to move
+    delay(40); //Added Servo 3-21-19 Still needs work.
+  }
+  }*/
+
+/*float servomovecenter()
+{
+  int position;
+
+  for (position = 40; position >= 0; position -= 1)
+  {
+    // Move to next position
+    servo1.write(position);
+    // Short pause to allow it to move
+    delay(40);
+  }
+}*/
+int avDist()
+{
+  val1 = getDistance();
+  val2 = getDistance();
+  val3 = getDistance();
+  val4 = getDistance();
+  val5 = getDistance();
+  val6 = getDistance();
+  avgDist = (val1 + val2 + val3 + val4 + val5 + val6) / 6;
+  Serial.println(avgDist);
+
+}
+
+int avDistR()
+{
+  servo1.write(150);//servo look Right
+  delay(3000);
+  val1 = getDistance();
+  val2 = getDistance();
+  val3 = getDistance();
+  val4 = getDistance();
+  val5 = getDistance();
+  val6 = getDistance();
+  avgDistR = (val1 + val2 + val3 + val4 + val5 + val6) / 6;
+  Serial.println(avgDistR);
+
+}
+int avDistL()
+{
+  servo1.write(30);//servo look Left
+  delay(3000);
+  val1 = getDistance();
+  val2 = getDistance();
+  val3 = getDistance();
+  val4 = getDistance();
+  val5 = getDistance();
+  val6 = getDistance();
+  avgDistL = (val1 + val2 + val3 + val4 + val5 + val6) / 6;
+  Serial.println(avgDistL);
+
+}
+void turnRight() {
+  //Turn right obstacle avoidance code
+    servo1.write(90); //servo look Forward   
+    delay(3000);
+    motorGo(0, CW, 100);//backup
+    motorGo(1, CW, 100);
+    delay(500);
+    motorGo(0, CW, 100);//turn right
+    motorGo(1, CCW, 100);
+    delay(500);
+    motorGo(0, CCW, 100);//forward
+    motorGo(1, CCW, 100);
+    delay(1500);
+    motorGo(0, CCW, 100);//turn left
+    motorGo(1, CW, 100);
+    delay(750);
+    motorGo(0, CCW, 100);//foward
+    motorGo(1, CCW, 100);
+    delay(1500);
+    motorGo(0, CW, 100);//turn right
+    motorGo(1, CCW, 100);
+    delay(250);
+    motorGo(0, CW, 0);//foward
+    motorGo(1, CW, 0);
+    delay(500);
+
+  }
+
+void turnLeft() {
+    //Turn left obstacle avoidance code
+    servo1.write(90); //servo look Forward   
+    delay(3000);
+    motorGo(0, CW, 100);//backup
+    motorGo(1, CW, 100);
+    delay(500);
+    motorGo(0, CCW, 100);//left turn
+    motorGo(1, CW, 100);
+    delay(500);
+    motorGo(0, CCW, 100);//forward
+    motorGo(1, CCW, 100);
+    delay(1500);
+    motorGo(0, CW, 110);//right turn
+    motorGo(1, CCW, 100);
+    delay(1500);
+    motorGo(0, CCW, 100);//forward
+    motorGo(1, CCW, 100);
+    delay(1500);
+    motorGo(0, CCW, 100);//left turn
+    motorGo(1, CW, 100);
+    delay(500);
+    motorGo(0, CW, 0);//stop
+    motorGo(1, CW, 0);
+    delay(500);
+
+}
